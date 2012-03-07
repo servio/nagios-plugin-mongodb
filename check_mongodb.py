@@ -80,7 +80,7 @@ def main(argv):
     try:
         #
         # ssl connection for pymongo > 2.1
-        # 
+        #
         if pymongo.version >= "2.1":
             con = pymongo.Connection(host, port, read_preference=pymongo.ReadPreference.SECONDARY, ssl=ssl)
         else:
@@ -121,8 +121,12 @@ def main(argv):
         check_databases(con, warning, critical)
     elif action == "collections":
         check_collections(con, warning, critical)
+    elif action == "collections":
+        check_collections(con, warning, critical)
     elif action == "database_size":
         check_database_size(con, database, warning, critical, perf_data)
+    elif action == "database_index_size":
+        check_database_index_size(con, database, warning, critical, perf_data)
     else:
         check_connect(host, port, warning, critical, perf_data, user, passwd, conn_time)
 
@@ -161,7 +165,7 @@ def check_connections(con, warning, critical, perf_data):
     try:
         try:
             set_read_preference(con.admin)
-            data = con.admin.command(pymongo.son_manipulator.SON([('serverStatus', 1), ('repl', 1)]))
+            data = con.admin.command(pymongo.son.manipulator.SON([('serverStatus', 1), ('repl', 1)]))
         except:
             data = con.admin.command(pymongo.son.SON([('serverStatus', 1), ('repl', 1)]))
 
@@ -507,6 +511,36 @@ def check_database_size(con, database, warning, critical, perf_data):
     except Exception, e:
         exit_with_general_critical(e)
 
+def check_database_index_size(con, database, warning, critical, perf_data):
+    warning = warning or 1024 # 1024M
+    critical = critical or 2048 # 2048M
+    perfdata = ""
+    try:
+        set_read_preference(con.admin)
+        total_index_size = 0
+        db = con[database]
+        for coll_name in db.collection_names():
+            if coll_name.startswith('system.'):
+                continue
+
+            data = db.command("collstats", coll_name)
+            total_index_size += data['totalIndexSize']
+
+        total_index_size = float(total_index_size) / 1024 / 1024
+        if perf_data:
+            perfdata += " | database_index_size=%i;%i;%i" % (total_index_size, warning, critical)
+
+        if total_index_size >= critical:
+            print "CRITICAL - Database size: %.0f MB, Database: %s%s" % (total_index_size, database, perfdata)
+            sys.exit(2)
+        elif total_index_size >= warning:
+            print "WARNING - Database size: %.0f MB, Database: %s%s" % (total_index_size, database, perfdata)
+            sys.exit(1)
+        else:
+            print "OK - Database size: %.0f MB, Database: %s%s" % (total_index_size, database, perfdata)
+            sys.exit(0)
+    except Exception, e:
+        exit_with_general_critical(e)
 
 #
 # main app
